@@ -1,0 +1,141 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>Grafana-MCP</Name>
+  <Repository>grafana/mcp-grafana:latest</Repository>
+  <Registry>https://hub.docker.com/r/grafana/mcp-grafana</Registry>
+  <Network>bridge</Network>
+  <Privileged>false</Privileged>
+  <Shell>sh</Shell>
+  <ExtraParams>--restart=unless-stopped</ExtraParams>
+
+  <Support>https://github.com/paulmeier/mcp-grafana-unraid/issues</Support>
+  <Project>https://github.com/grafana/mcp-grafana</Project>
+
+  <Category>Productivity: Tools:Utilities Network:Management</Category>
+
+  <Icon>https://raw.githubusercontent.com/paulmeier/mcp-grafana-unraid/main/icons/mcp-grafana.png</Icon>
+  <TemplateURL>https://raw.githubusercontent.com/paulmeier/mcp-grafana-unraid/main/templates/mcp-grafana.xml</TemplateURL>
+
+  <!-- HEADLESS MCP SERVER, NO REAL WEB UI -->
+  <!-- This container is an MCP endpoint, not a web app. MCP clients connect to the
+       SSE stream at /sse. Opening that path in a browser just hangs on an open
+       stream, so the WebUI button instead points at the /healthz liveness endpoint,
+       which returns a quick response you can use to confirm the server is up. -->
+  <WebUI>http://[IP]:[PORT:8000]/healthz</WebUI>
+
+  <!-- TAILSCALE SUPPORT (Unraid 7 native Docker integration) -->
+  <!-- The MCP server is stateless, so on its own it has no persistent directory for
+       Unraid's built-in "Use Tailscale" toggle to store state in. Without one the
+       hook aborts with:
+         ERROR: Couldn't detect persistent Docker directory for .tailscale_state!
+       To fix that this template maps a small Appdata volume (below) purely so the
+       Tailscale machine key and node identity have somewhere to live that survives
+       container recreation and image updates. The upstream image already ships
+       ca-certificates, which the Unraid Tailscale hook needs to fetch its binary.
+       To enable: edit the container, switch to Advanced View, toggle "Use Tailscale"
+       on, set a hostname, Apply, then click the auth link shown in the container log. -->
+  <TailscaleStateDir>/appdata/.tailscale_state</TailscaleStateDir>
+
+  <Overview>Grafana MCP is the official Model Context Protocol server from Grafana Labs. It exposes your Grafana instance to AI assistants and other MCP clients through a single endpoint, so a client such as Claude can search dashboards, run Prometheus and Loki queries, inspect datasources, review alert rules and incidents, explore profiles, and more, using scoped tools instead of raw API calls. The container runs the server in SSE transport mode on port 8000 and serves the MCP endpoint at /sse. It needs a reachable Grafana instance and a Grafana service account token to authenticate. This is a headless server with no browsable web interface: point your MCP client at http://[UNRAID-IP]:8000/sse.</Overview>
+
+  <Requires>A running Grafana instance that this container can reach over the network, plus a Grafana service account token. Create the token in Grafana under Administration, then Users and access, then Service accounts, granting the service account only the roles you want the MCP server to be able to use. In the Grafana URL field use the Grafana host LAN IP or container name, not localhost, which inside the container points back at the MCP server itself.</Requires>
+
+  <ExtraSearchTerms>grafana mcp model context protocol ai llm claude anthropic observability dashboards prometheus loki alerts incidents sse streamable http grafana labs</ExtraSearchTerms>
+
+  <!-- ===================== PORTS ===================== -->
+  <Config Name="MCP Server Port"
+          Target="8000"
+          Default="8000"
+          Mode="tcp"
+          Type="Port"
+          Display="always"
+          Required="true"
+          Description="Host port mapped to the Grafana MCP server. MCP clients connect to http://[UNRAID-IP]:[this port]/sse for the SSE transport. Change only the host side if 8000 is already taken on your server.">8000</Config>
+
+  <!-- ===================== REQUIRED VARIABLES ===================== -->
+  <Config Name="Grafana URL"
+          Target="GRAFANA_URL"
+          Default="http://GRAFANA-HOST-IP:3000"
+          Mode=""
+          Type="Variable"
+          Display="always"
+          Required="true"
+          Description="Full base URL of the Grafana instance the MCP server connects to, including scheme and port. Example http://192.168.1.10:3000 or https://grafana.example.com . Do not use localhost or 127.0.0.1 here, because inside the container those refer to the MCP server itself, not your Grafana. If Grafana runs as another Docker container on this same Unraid host, use the Unraid host LAN IP with the published Grafana port, or put both containers on one custom Docker network and use the Grafana container name.">http://GRAFANA-HOST-IP:3000</Config>
+
+  <Config Name="Grafana Service Account Token"
+          Target="GRAFANA_SERVICE_ACCOUNT_TOKEN"
+          Default=""
+          Mode=""
+          Type="Variable"
+          Display="always"
+          Required="true"
+          Mask="true"
+          Description="Grafana service account token used to authenticate every request to Grafana. In Grafana go to Administration, then Users and access, then Service accounts, create a service account with the roles you want to grant, add a token, and paste it here. This is the recommended authentication method and replaces the deprecated API key. Treat it like a password.">
+  </Config>
+
+  <!-- ===================== OPTIONAL VARIABLES ===================== -->
+  <Config Name="Grafana Org ID"
+          Target="GRAFANA_ORG_ID"
+          Default=""
+          Mode=""
+          Type="Variable"
+          Display="advanced"
+          Required="false"
+          Description="Optional Grafana organization ID to scope requests to. Useful on multi-org instances. Leave blank to use the default organization for the token.">
+  </Config>
+
+  <Config Name="Extra Headers"
+          Target="GRAFANA_EXTRA_HEADERS"
+          Default=""
+          Mode=""
+          Type="Variable"
+          Display="advanced"
+          Required="false"
+          Description="Optional extra HTTP headers sent with every Grafana request, given as a JSON object mapping header names to values. Handy for tenant routing on Grafana Cloud or Mimir, for example an X-Scope-OrgID header. Leave blank if you do not need it.">
+  </Config>
+
+  <Config Name="Timezone"
+          Target="TZ"
+          Default=""
+          Mode=""
+          Type="Variable"
+          Display="advanced"
+          Required="false"
+          Description="Container timezone, used for log timestamps. Example Europe/Madrid or America/New_York. Leave blank for UTC.">
+  </Config>
+
+  <!-- ===================== APPDATA (TAILSCALE STATE ONLY) ===================== -->
+  <!-- The MCP server writes nothing here. This mapping exists so the Tailscale
+       state directory declared above lives on a persistent volume. Safe to leave
+       as-is even if you never enable Tailscale. -->
+  <Config Name="Appdata (Tailscale state)"
+          Target="/appdata"
+          Default="/mnt/user/appdata/mcp-grafana"
+          Mode="rw"
+          Type="Path"
+          Display="advanced"
+          Required="false"
+          Description="Small writable folder used only to persist Tailscale state when you enable Unraid built-in Tailscale integration. The Grafana MCP server itself is stateless and stores nothing here. If you do not use Tailscale you can safely leave this at its default. Keeping it mapped lets the Use Tailscale toggle work without the Couldn't detect persistent Docker directory error.">/mnt/user/appdata/mcp-grafana</Config>
+
+  <Description>
+    Grafana MCP is the official Model Context Protocol server from Grafana Labs. It exposes your Grafana instance to AI assistants and other MCP clients through a single endpoint, so a client such as Claude can search dashboards, run Prometheus and Loki queries, inspect datasources, review alert rules and incidents, explore profiles, and more, using scoped tools instead of raw API calls.
+
+    WHAT YOU NEED
+    1. A running Grafana instance this container can reach over your network.
+    2. A Grafana service account token. Create it in Grafana under Administration, then Users and access, then Service accounts. Give the service account only the roles you want the MCP server to be able to use.
+
+    CONFIGURE
+    Set Grafana URL to the full address of your Grafana, including scheme and port, for example http://192.168.1.10:3000 . Do not use localhost or 127.0.0.1, because inside the container those refer to the MCP server itself. If Grafana is another Docker container on this same host, use the Unraid host LAN IP with the published Grafana port, or place both containers on one custom Docker network and use the Grafana container name. Paste your token into Grafana Service Account Token and Apply.
+
+    CONNECTING A CLIENT
+    The container runs in SSE transport mode on port 8000. Point your MCP client at http://[UNRAID-IP]:8000/sse . A liveness endpoint is available at http://[UNRAID-IP]:8000/healthz , which is what the WebUI button opens. There is no browsable web interface. To use the newer streamable HTTP transport instead, add a Post Argument of --transport streamable-http in the Docker editor, then connect your client to http://[UNRAID-IP]:8000/mcp .
+
+    TAILSCALE
+    This template supports Unraid built-in Tailscale integration so the server can join your tailnet as its own device and be reached privately without opening any ports. Edit the container, switch to Advanced View, toggle Use Tailscale on, set a hostname, and Apply, then open the container log and click the authentication link. The template declares the Tailscale state directory inside the mapped Appdata volume so the machine identity survives updates and you avoid the Couldn't detect persistent Docker directory error. The image already ships ca-certificates, which the Unraid Tailscale hook needs.
+
+    SECURITY
+    The MCP server can do anything the service account token allows, so scope the token to the least privilege you need. The SSE endpoint has no authentication of its own, so keep it on your LAN or behind Tailscale rather than exposing it directly to the internet.
+
+    Project: https://github.com/grafana/mcp-grafana
+  </Description>
+</Container>
